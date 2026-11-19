@@ -19,128 +19,80 @@ X_train, X_test, y_train, y_test = train_test_split(
 
 ## 2. Modular Preprocessing Pipeline
 
-A robust machine learning pipeline should handle numerical and categorical features separately using **modular, reusable preprocessing components**.
-
-Scikit-learn's `Pipeline` and `ColumnTransformer` allow multiple preprocessing operations to be combined into a single workflow, ensuring consistency between training and inference.
-
-### 2.1 Import Dependencies
-
 ```python
 from sklearn.compose import ColumnTransformer
 from sklearn.pipeline import Pipeline
 from sklearn.impute import SimpleImputer
 from sklearn.preprocessing import StandardScaler, OneHotEncoder
-```
 
-### 2.2 Identify Feature Types
+# Separate feature types dynamically
+num_cols = X_train.select_dtypes(include=['int64', 'float64']).columns.tolist()
+cat_cols = X_train.select_dtypes(include=['object', 'category']).columns.tolist()
 
-Dynamically identify numerical and categorical columns from the training dataset.
-
-```python
-# Numerical features
-num_cols = X_train.select_dtypes(
-    include=["number"]
-).columns.tolist()
-
-# Categorical features
-cat_cols = X_train.select_dtypes(
-    include=["object", "category"]
-).columns.tolist()
-
-print(f"Numerical Features: {len(num_cols)}")
-print(f"Categorical Features: {len(cat_cols)}")
-```
-
-**Why dynamic detection?**
-
-- Eliminates manual feature classification.
-- Makes the pipeline reusable across datasets.
-- Reduces hardcoded dependencies.
-- Supports changes in dataset structure.
-
-> **Note:** Numeric columns are not necessarily continuous variables. Integer-encoded categories and identifiers may require separate treatment. Boolean, datetime, and other unsupported data types should also be handled explicitly.
-
-### 2.3 Numerical Preprocessing Pipeline
-
-Numerical features require appropriate handling of missing values and feature scaling.
-
-```python
+# Numerical: median impute + standard scaling
 num_pipeline = Pipeline([
-    ("imputer", SimpleImputer(strategy="median")),
-    ("scaler", StandardScaler())
+    ('imputer', SimpleImputer(strategy='median')),
+    ('scaler', StandardScaler())
+])
+
+# Categorical: frequent impute + one-hot (handle_unknown='ignore' prevents inference crashes!)
+cat_pipeline = Pipeline([
+    ('imputer', SimpleImputer(strategy='most_frequent')),
+    ('encoder', OneHotEncoder(handle_unknown='ignore', sparse_output=False))
+])
+
+# Full preprocessor
+preprocessor = ColumnTransformer(transformers=[
+    ('num', num_pipeline, num_cols),
+    ('cat', cat_pipeline, cat_cols)
 ])
 ```
 
 ## 3. Baseline First → Strong Candidate Model
 
-A reliable machine learning workflow should begin with a **simple, interpretable baseline model** before introducing more complex algorithms.
-
-This establishes a performance reference and helps determine whether additional model complexity provides meaningful improvements.
-
-The objective is not simply to achieve the highest score, but to evaluate the trade-offs between **predictive performance, generalization, interpretability, and computational complexity**.
-
-### 3.1 Import Dependencies
-
 ```python
 from sklearn.linear_model import LogisticRegression
 from sklearn.ensemble import RandomForestClassifier
-from sklearn.pipeline import Pipeline
-```
 
-### 3.2 Baseline Model — Logistic Regression
-
-Logistic Regression provides a strong baseline for classification problems due to its simplicity, efficiency, and interpretability.
-
-```python
+# 1. Baseline Model Pipeline
 baseline_pipe = Pipeline([
-    ("preprocessor", preprocessor),
-    ("classifier", LogisticRegression(
-        max_iter=1000,
-        class_weight="balanced",
-        random_state=42
-    ))
+    ('preprocessor', preprocessor),
+    ('classifier', LogisticRegression(max_iter=1000, class_weight='balanced', random_state=42))
 ])
-
-# Train baseline model
 baseline_pipe.fit(X_train, y_train)
+
+# 2. Candidate Model Pipeline (e.g., Random Forest or Gradient Boosting)
+candidate_pipe = Pipeline([
+    ('preprocessor', preprocessor),
+    ('classifier', RandomForestClassifier(n_estimators=100, class_weight='balanced', random_state=42, n_jobs=-1))
+])
+candidate_pipe.fit(X_train, y_train)
 ```
 
 ## 4. Evaluation & Error Analysis
 
-Model evaluation should go beyond a single performance metric to understand **predictive quality, generalization, class imbalance, and error patterns**.
-
-A reliable evaluation framework should measure both overall predictive performance and the consequences of different types of classification errors.
-
-The objective is not simply to identify the highest-scoring model, but to understand **where, why, and under what conditions the model fails**.
-
-### 4.1 Import Dependencies
-
 ```python
-import numpy as np
-import pandas as pd
-import matplotlib.pyplot as plt
-import seaborn as sns
+from sklearn.metrics import classification_report, roc_auc_score, average_precision_score, confusion_matrix
 
-from sklearn.metrics import (
-    classification_report,
-    accuracy_score,
-    precision_score,
-    recall_score,
-    f1_score,
-    roc_auc_score,
-    average_precision_score,
-    confusion_matrix,
-    ConfusionMatrixDisplay,
-    RocCurveDisplay,
-    PrecisionRecallDisplay
-)
+def evaluate_model(model, X_val, y_val, model_name="Model"):
+    y_pred = model.predict(X_val)
+    y_prob = model.predict_proba(X_val)[:, 1] if hasattr(model, "predict_proba") else None
+    
+    print(f"\n=================== {model_name} Evaluation ===================")
+    print(classification_report(y_val, y_pred, digits=4))
+    
+    if y_prob is not None:
+        roc = roc_auc_score(y_val, y_prob)
+        pr_auc = average_precision_score(y_val, y_prob)
+        print(f"ROC-AUC: {roc:.4f} | PR-AUC: {pr_auc:.4f}")
+    
+    cm = confusion_matrix(y_val, y_pred)
+    print(f"Confusion Matrix:\n{cm}")
+    return {"roc_auc": roc, "pr_auc": pr_auc}
+
+eval_base = evaluate_model(baseline_pipe, X_test, y_test, "Baseline Logistic Regression")
+eval_cand = evaluate_model(candidate_pipe, X_test, y_test, "Candidate Random Forest")
 ```
-
-### 4.2 Reusable Model Evaluation Function
-
-Create a reusable evaluation function to assess different classification models using consistent metrics.
-
-The following implementation assumes **binary classification with labels 0 and 1**, where `1` represents the positive class.
 
 ```python
 def evaluate_model(model, X_val, y_val, model_name="Model"):
