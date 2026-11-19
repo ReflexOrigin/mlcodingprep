@@ -1,3 +1,5 @@
+# General Machine Learning Classification Pipeline
+
 ## 1. Leakage-Free Ingestion & Splitting
 
 The first step in any machine learning pipeline is to **load, inspect, and split the dataset before applying preprocessing transformations**.
@@ -62,6 +64,10 @@ X_train, X_test, y_train, y_test = train_test_split(
 )
 ```
 
+> **Note:** For time-dependent data, use chronological splitting. For repeated observations belonging to the same entity, consider group-aware splitting to prevent cross-group leakage. Stratification is appropriate for many ordinary classification datasets but is not universally appropriate.
+
+---
+
 ## 2. Modular Preprocessing Pipeline
 
 A robust machine learning pipeline should handle numerical and categorical features separately using **modular, reusable preprocessing components**.
@@ -116,6 +122,35 @@ num_pipeline = Pipeline([
 ])
 ```
 
+### 2.4 Categorical Preprocessing Pipeline
+
+Categorical features require imputation and encoding. Unknown categories may appear at inference time, so the encoder should handle them safely.
+
+```python
+cat_pipeline = Pipeline([
+    ("imputer", SimpleImputer(strategy="most_frequent")),
+    ("encoder", OneHotEncoder(handle_unknown="ignore"))
+])
+```
+
+### 2.5 Combine Feature Transformations
+
+Use `ColumnTransformer` to apply each preprocessing pipeline to its corresponding feature subset.
+
+```python
+preprocessor = ColumnTransformer(
+    transformers=[
+        ("num", num_pipeline, num_cols),
+        ("cat", cat_pipeline, cat_cols)
+    ],
+    remainder="drop"
+)
+```
+
+> **Leakage prevention:** Do not fit `preprocessor` on the entire dataset. It will be fitted on `X_train` automatically when the model pipeline is trained.
+
+---
+
 ## 3. Baseline First → Strong Candidate Model
 
 A reliable machine learning workflow should begin with a **simple, interpretable baseline model** before introducing more complex algorithms.
@@ -149,6 +184,10 @@ baseline_pipe = Pipeline([
 # Train baseline model
 baseline_pipe.fit(X_train, y_train)
 ```
+
+> **Note:** The `class_weight="balanced"` setting is useful to test when classes are imbalanced; it is not automatically optimal for every dataset. Choose models and thresholds using cross-validation or a separate validation set, and reserve the test set for final evaluation.
+
+---
 
 ## 4. Evaluation & Error Analysis
 
@@ -245,4 +284,19 @@ def evaluate_model(model, X_val, y_val, model_name="Model"):
         "roc_auc": roc,
         "pr_auc": pr_auc
     }
+```
+
+### 4.3 Example: Evaluate the Baseline
+
+After selecting a model using training data and an appropriate validation strategy, use the held-out test set for a final evaluation.
+
+```python
+baseline_metrics = evaluate_model(
+    baseline_pipe,
+    X_test,
+    y_test,
+    model_name="Logistic Regression Baseline"
+)
+
+print(pd.DataFrame([baseline_metrics]))
 ```
