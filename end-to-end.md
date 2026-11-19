@@ -1,64 +1,19 @@
 ## 1. Leakage-Free Ingestion & Splitting
 
-The first step in any machine learning pipeline is to **load, inspect, and split the dataset before applying preprocessing transformations**.
-
-This prevents **data leakage** and ensures that model performance is evaluated on genuinely unseen data.
-
-### 1.1 Import Dependencies
-
 ```python
 import pandas as pd
 from sklearn.model_selection import train_test_split
-```
-
-### 1.2 Load Dataset
-
-```python
+# 1. Load data
 df = pd.read_csv("data.csv")
-```
-
-### 1.3 Initial Sanity Checks
-
-Before splitting, inspect the dataset's structure, missing values, and target distribution.
-
-```python
-# Dataset dimensions
+# 2. Quick sanity checks
 print(f"Shape: {df.shape}")
-
-# Missing values
 print(df.isnull().sum()[df.isnull().sum() > 0])
-
-# Target class distribution (classification)
-print(df["target"].value_counts(normalize=True))
-```
-
-**What to examine:**
-
-- **Shape:** Number of observations and features.
-- **Missing Values:** Identify columns requiring imputation.
-- **Class Distribution:** Detect potential class imbalance.
-- **Target Integrity:** Verify that the target column is correctly defined.
-
-### 1.4 Feature-Target Separation
-
-Separate the independent variables (`X`) from the target variable (`y`).
-
-```python
-X = df.drop(columns=["target"])
-y = df["target"]
-```
-
-### 1.5 Leakage-Free Train-Test Split
-
-Split the dataset **before fitting any data-dependent preprocessing transformations**, such as imputation, scaling, encoding, or feature selection.
-
-```python
+print(df['target'].value_counts(normalize=True))  # Check class imbalance
+# 3. Leak-free split FIRST
+X = df.drop(columns=['target'])
+y = df['target']
 X_train, X_test, y_train, y_test = train_test_split(
-    X,
-    y,
-    test_size=0.2,
-    random_state=42,
-    stratify=y  # Preserve class distribution for classification
+    X, y, test_size=0.2, random_state=42, stratify=y  # stratify for classification
 )
 ```
 
